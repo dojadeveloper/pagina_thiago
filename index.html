@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gatos Voladores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cielo-1: #7ec8ff;
+    --cielo-2: #c9b6ff;
+    --cielo-3: #ffd6f0;
+    --tinta: #3b2a6b;
+    --boton: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: "Fredoka", system-ui, sans-serif;
+    color: var(--tinta);
+    background: linear-gradient(180deg, var(--cielo-1) 0%, var(--cielo-2) 55%, var(--cielo-3) 100%);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas { position: fixed; inset: 0; display: block; touch-action: manipulation; cursor: pointer; }
+
+  header {
+    position: fixed; top: 16px; left: 16px; right: 16px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    pointer-events: none;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 4.5vw, 2.8rem);
+    line-height: 1.05;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 3px 0 #a066ff, 0 6px 14px rgba(59, 42, 107, .35);
+  }
+  h1 span { display: block; font-size: .5em; font-weight: 500; text-shadow: 0 2px 0 #a066ff; margin-top: 6px; }
+
+  .contador {
+    flex: none;
+    background: rgba(255,255,255,.85);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-weight: 700;
+    font-size: clamp(1rem, 3vw, 1.3rem);
+    box-shadow: 0 4px 0 rgba(160,102,255,.45);
+    transition: transform .15s;
+    white-space: nowrap;
+  }
+  .contador.salto { transform: scale(1.2) rotate(-4deg); }
+
+  .controles {
+    position: fixed; bottom: 16px; left: 16px; right: 16px;
+    display: flex; justify-content: center; flex-wrap: wrap; gap: 10px;
+    pointer-events: none;
+  }
+  button {
+    pointer-events: auto;
+    font: inherit; font-weight: 700; font-size: 1.05rem;
+    color: var(--tinta);
+    background: var(--boton);
+    border: none; border-radius: 999px;
+    padding: 12px 20px;
+    box-shadow: 0 5px 0 #a066ff;
+    cursor: pointer;
+    transition: transform .1s, box-shadow .1s;
+  }
+  button:hover { transform: translateY(-2px); box-shadow: 0 7px 0 #a066ff; }
+  button:active { transform: translateY(4px); box-shadow: 0 1px 0 #a066ff; }
+
+  .pista {
+    position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
+    background: rgba(255,255,255,.75); padding: 6px 14px; border-radius: 999px;
+    font-size: .95rem; pointer-events: none; text-align: center;
+    transition: opacity 1s; max-width: calc(100% - 32px);
+  }
+</style>
+</head>
+<body>
+<canvas id="cielo"></canvas>
+
+<header>
+  <h1>Gatos Voladores<span>que comen arcoíris 🌈</span></h1>
+  <div class="contador" id="contador">🌈 0 comidos</div>
+</header>
+
+<div class="pista" id="pista">Toca el cielo para darles un arcoíris · toca un gato para que haga una pirueta</div>
+
+<div class="controles">
+  <button id="btnGato">🐱 Otro gato</button>
+  <button id="btnLluvia">🌈 Lluvia de arcoíris</button>
+</div>
+
+<script>
+const canvas = document.getElementById('cielo');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const COLORES = ['#ff4d4d', '#ff9f1a', '#ffe14d', '#4dd965', '#4da6ff', '#a066ff'];
+const PELAJES = [
+  { pelo: '#ffb347', rayas: '#e0821a', panza: '#ffe2b8' },
+  { pelo: '#9aa3b5', rayas: '#6d768a', panza: '#dfe3ec' },
+  { pelo: '#ffffff', rayas: '#e8e0f0', panza: '#ffffff' },
+  { pelo: '#3d3a4a', rayas: '#29272f', panza: '#5e5a6e' },
+  { pelo: '#ff9ccf', rayas: '#ee6fb0', panza: '#ffd9ec' },
+  { pelo: '#c8a27a', rayas: '#8f6a45', panza: '#f1dcc4' },
+];
+const NOMBRES = ['Michi', 'Pelusa', 'Bigotes', 'Nube', 'Galleta', 'Luna', 'Tito', 'Mango', 'Chispa', 'Copito', 'Garfio', 'Pompón'];
+const FRASES = ['¡Ñam!', '¡Ñam ñam!', '¡Qué rico!', '¡Mmm, arcoíris!', '¡Delicioso!', '¡Otro más!'];
+
+const gatos = [], arcoiris = [], particulas = [], textos = [], nubes = [];
+let comidos = 0;
+
+// ---------- Nubes de fondo ----------
+for (let i = 0; i < 7; i++) {
+  nubes.push({ x: rand(0, 1), y: rand(0.1, 0.9), s: rand(0.6, 1.4), v: rand(4, 12) });
+}
+function dibujarNubes(dt) {
+  for (const n of nubes) {
+    n.x += n.v * dt / Math.max(W, 1);
+    if (n.x > 1.2) { n.x = -0.2; n.y = rand(0.1, 0.9); }
+    const x = n.x * W, y = n.y * H, s = 40 * n.s;
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath();
+    ctx.arc(x, y, s, 0, Math.PI * 2);
+    ctx.arc(x + s * 0.9, y + s * 0.2, s * 0.75, 0, Math.PI * 2);
+    ctx.arc(x - s * 0.9, y + s * 0.25, s * 0.7, 0, Math.PI * 2);
+    ctx.arc(x + s * 0.3, y - s * 0.5, s * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ---------- Arcoíris (la comida) ----------
+class Arcoiris {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.r = rand(22, 32);
+    this.t = rand(0, 10);
+    this.escala = 0;
+    this.vy = 0;
+  }
+  update(dt) {
+    this.t += dt;
+    this.escala = Math.min(1, this.escala + dt * 3);
+  }
+  draw() {
+    const r = this.r, w = r / 8;
+    ctx.save();
+    ctx.translate(this.x, this.y + Math.sin(this.t * 2) * 4);
+    ctx.scale(this.escala, this.escala);
+    ctx.shadowColor = 'rgba(255,255,255,.9)';
+    ctx.shadowBlur = 14;
+    ctx.lineWidth = w + 0.5;
+    COLORES.forEach((c, i) => {
+      ctx.strokeStyle = c;
+      ctx.beginPath();
+      ctx.arc(0, 0, r - i * w, Math.PI, 0);
+      ctx.stroke();
+    });
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    for (const lado of [-1, 1]) {
+      const cx = lado * (r - 2.5 * w);
+      ctx.beginPath();
+      ctx.arc(cx, w, w * 2.2, 0, Math.PI * 2);
+      ctx.arc(cx - w * 1.8, w * 1.6, w * 1.6, 0, Math.PI * 2);
+      ctx.arc(cx + w * 1.8, w * 1.6, w * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ---------- Gatos ----------
+class Gato {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.vx = rand(-2, 2); this.vy = rand(-1, 1);
+    this.size = rand(24, 32);
+    this.pelaje = pick(PELAJES);
+    this.nombre = pick(NOMBRES);
+    this.t = rand(0, 100);
+    this.semilla = rand(0, 100);
+    this.cara = 1;
+    this.boca = 0;
+    this.giro = 0;
+    this.estela = [];
+  }
+  update(dt) {
+    const f = dt * 60;
+    this.t += dt;
+
+    // Buscar el arcoíris más cercano
+    let meta = null, mejor = Infinity;
+    for (const a of arcoiris) {
+      const d = Math.hypot(a.x - this.x, a.y - this.y);
+      if (d < mejor) { mejor = d; meta = a; }
+    }
+    let ax, ay;
+    if (meta) {
+      const dx = meta.x - this.x, dy = meta.y - this.y, d = mejor || 1;
+      ax = dx / d * 0.22; ay = dy / d * 0.22;
+      if (d < this.size * 0.9 + meta.r * 0.5) comer(this, meta);
+    } else {
+      ax = Math.cos(this.t * 0.6 + this.semilla) * 0.08;
+      ay = Math.sin(this.t * 0.9 + this.semilla) * 0.08;
+    }
+    const m = 50;
+    if (this.x < m) ax += 0.3;
+    if (this.x > W - m) ax -= 0.3;
+    if (this.y < m + 60) ay += 0.3;
+    if (this.y > H - m - 60) ay -= 0.3;
+
+    this.vx = (this.vx + ax * f) * Math.pow(0.975, f);
+    this.vy = (this.vy + ay * f) * Math.pow(0.975, f);
+    const v = Math.hypot(this.vx, this.vy), max = 4.2;
+    if (v > max) { this.vx *= max / v; this.vy *= max / v; }
+    this.x += this.vx * f;
+    this.y += this.vy * f;
+
+    const dir = this.vx >= 0 ? 1 : -1;
+    this.cara += (dir - this.cara) * Math.min(1, 0.12 * f);
+    this.boca = Math.max(0, this.boca - dt * 2.5);
+    this.giro = Math.max(0, this.giro - dt * 9);
+
+    // Estela de arcoíris saliendo de la cola
+    this.estela.push({ x: this.x - this.cara * this.size * 0.8, y: this.y + Math.sin(this.t * 10) * 1.5 });
+    if (this.estela.length > 34) this.estela.shift();
+  }
+  dibujarEstela() {
+    const e = this.estela;
+    if (e.length < 2) return;
+    const w = this.size * 0.13;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    COLORES.forEach((c, i) => {
+      const off = (i - 2.5) * w;
+      for (let k = 1; k < e.length; k++) {
+        ctx.globalAlpha = (k / e.length) * 0.8;
+        ctx.strokeStyle = c;
+        ctx.lineWidth = w + 0.6;
+        ctx.beginPath();
+        ctx.moveTo(e[k - 1].x, e[k - 1].y + off);
+        ctx.lineTo(e[k].x, e[k].y + off);
+        ctx.stroke();
+      }
+    });
+    ctx.globalAlpha = 1;
+  }
+  dibujarAla(x, y, rot) {
+    const s = this.size;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.strokeStyle = '#b9d8ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.35, 0, s * 0.6, s * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.1, 0); ctx.lineTo(-s * 0.75, -s * 0.02);
+    ctx.moveTo(-s * 0.1, 0); ctx.lineTo(-s * 0.6, s * 0.12);
+    ctx.stroke();
+    ctx.restore();
+  }
+  draw() {
+    const s = this.size, p = this.pelaje;
+    const aleteo = Math.sin(this.t * 14);
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.vy * 0.06 * Math.sign(this.cara) + this.giro);
+    ctx.scale(this.cara, 1);
+
+    this.dibujarAla(-s * 0.05, -s * 0.4, -0.5 + aleteo * 0.5);
+
+    // Cola
+    ctx.strokeStyle = p.pelo; ctx.lineWidth = s * 0.22; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.75, -s * 0.05);
+    ctx.quadraticCurveTo(-s * 1.25, -s * 0.1, -s * 1.3, -s * 0.55 + Math.sin(this.t * 5) * s * 0.18);
+    ctx.stroke();
+
+    // Patitas
+    ctx.lineWidth = s * 0.17;
+    for (const [lx, fase] of [[-0.5, 0], [-0.25, 1.5], [0.3, 0.8], [0.55, 2.3]]) {
+      const sw = Math.sin(this.t * 8 + fase) * s * 0.08;
+      ctx.beginPath();
+      ctx.moveTo(lx * s, s * 0.3);
+      ctx.lineTo(lx * s + sw - s * 0.08, s * 0.58);
+      ctx.stroke();
+    }
+
+    // Cuerpo
+    ctx.fillStyle = p.pelo;
+    ctx.beginPath(); ctx.ellipse(0, 0, s * 0.85, s * 0.48, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = p.panza;
+    ctx.beginPath(); ctx.ellipse(s * 0.05, s * 0.18, s * 0.55, s * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = p.rayas; ctx.lineWidth = s * 0.08;
+    for (const rx of [-0.45, -0.2, 0.05]) {
+      ctx.beginPath();
+      ctx.moveTo(rx * s, -s * 0.46);
+      ctx.quadraticCurveTo(rx * s + s * 0.08, -s * 0.28, rx * s, -s * 0.15);
+      ctx.stroke();
+    }
+
+    // Cabeza
+    const hx = s * 0.8, hy = -s * 0.25;
+    ctx.fillStyle = p.pelo;
+    for (const oreja of [
+      [[hx - s * 0.42, hy - s * 0.15], [hx - s * 0.32, hy - s * 0.78], [hx - s * 0.02, hy - s * 0.42]],
+      [[hx + s * 0.04, hy - s * 0.46], [hx + s * 0.34, hy - s * 0.78], [hx + s * 0.44, hy - s * 0.12]],
+    ]) {
+      ctx.beginPath();
+      ctx.moveTo(...oreja[0]); ctx.lineTo(...oreja[1]); ctx.lineTo(...oreja[2]);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = '#ffb3cf';
+    ctx.beginPath();
+    ctx.moveTo(hx - s * 0.33, hy - s * 0.3); ctx.lineTo(hx - s * 0.29, hy - s * 0.64); ctx.lineTo(hx - s * 0.1, hy - s * 0.42);
+    ctx.moveTo(hx + s * 0.12, hy - s * 0.44); ctx.lineTo(hx + s * 0.31, hy - s * 0.64); ctx.lineTo(hx + s * 0.36, hy - s * 0.25);
+    ctx.fill();
+    ctx.fillStyle = p.pelo;
+    ctx.beginPath(); ctx.arc(hx, hy, s * 0.5, 0, Math.PI * 2); ctx.fill();
+
+    // Ojos (parpadean de vez en cuando)
+    const parpadeo = (this.t + this.semilla) % 3.5 < 0.13;
+    for (const ex of [hx - s * 0.08, hx + s * 0.22]) {
+      const ey = hy - s * 0.06;
+      if (parpadeo) {
+        ctx.strokeStyle = '#2b2233'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(ex - s * 0.09, ey); ctx.lineTo(ex + s * 0.09, ey); ctx.stroke();
+      } else {
+        ctx.fillStyle = '#2b2233';
+        ctx.beginPath(); ctx.arc(ex, ey, s * 0.11, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(ex + s * 0.035, ey - s * 0.04, s * 0.04, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // Cachetes
+    ctx.fillStyle = 'rgba(255,120,170,.45)';
+    ctx.beginPath(); ctx.arc(hx - s * 0.25, hy + s * 0.14, s * 0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx + s * 0.37, hy + s * 0.14, s * 0.07, 0, Math.PI * 2); ctx.fill();
+    // Nariz
+    const nx = hx + s * 0.08, ny = hy + s * 0.1;
+    ctx.fillStyle = '#ff6fa3';
+    ctx.beginPath(); ctx.moveTo(nx - s * 0.05, ny); ctx.lineTo(nx + s * 0.05, ny); ctx.lineTo(nx, ny + s * 0.05); ctx.fill();
+    // Boca
+    if (this.boca > 0) {
+      ctx.fillStyle = '#7a1f3d';
+      ctx.beginPath(); ctx.ellipse(nx, ny + s * 0.15, s * 0.08, s * 0.11 * this.boca + 1, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.strokeStyle = '#2b2233'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(nx - s * 0.04, ny + s * 0.07, s * 0.04, 0, Math.PI);
+      ctx.arc(nx + s * 0.04, ny + s * 0.07, s * 0.04, 0, Math.PI);
+      ctx.stroke();
+    }
+    // Bigotes
+    ctx.strokeStyle = 'rgba(43,34,51,.6)'; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (const dy of [-0.03, 0.05]) {
+      ctx.moveTo(hx + s * 0.3, ny + dy * s); ctx.lineTo(hx + s * 0.65, ny + dy * s * 2.5);
+      ctx.moveTo(hx - s * 0.15, ny + dy * s); ctx.lineTo(hx - s * 0.5, ny + dy * s * 2.5);
+    }
+    ctx.stroke();
+
+    this.dibujarAla(s * 0.1, -s * 0.32, -0.2 + aleteo * 0.7);
+    ctx.restore();
+  }
+}
+
+// ---------- Efectos ----------
+function comer(gato, a) {
+  const i = arcoiris.indexOf(a);
+  if (i === -1) return;
+  arcoiris.splice(i, 1);
+  gato.boca = 1;
+  gato.size = Math.min(46, gato.size + 0.7);
+  for (let k = 0; k < 22; k++) {
+    const ang = rand(0, Math.PI * 2), v = rand(1, 4.5);
+    particulas.push({ x: a.x, y: a.y, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, vida: 1, color: pick(COLORES), r: rand(2, 5) });
+  }
+  textos.push({ x: a.x, y: a.y - 20, vida: 1, texto: pick(FRASES) });
+  comidos++;
+  const c = document.getElementById('contador');
+  c.textContent = `🌈 ${comidos} comido${comidos === 1 ? '' : 's'}`;
+  c.classList.add('salto');
+  setTimeout(() => c.classList.remove('salto'), 150);
+}
+
+function estrella(x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const ang = i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? r * 0.45 : r;
+    ctx.lineTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+function nuevoArcoiris(x, y) {
+  if (arcoiris.length >= 30) return;
+  arcoiris.push(new Arcoiris(x ?? rand(60, W - 60), y ?? rand(130, H - 130)));
+}
+function nuevoGato() {
+  if (gatos.length >= 15) return;
+  const g = new Gato(rand(80, W - 80), rand(140, H - 140));
+  gatos.push(g);
+  textos.push({ x: g.x, y: g.y - 40, vida: 1.4, texto: `¡Hola, soy ${g.nombre}!` });
+}
+
+for (let i = 0; i < 4; i++) nuevoGato();
+textos.length = 0;
+for (let i = 0; i < 5; i++) nuevoArcoiris();
+
+// ---------- Interacción ----------
+canvas.addEventListener('pointerdown', e => {
+  const x = e.clientX, y = e.clientY;
+  const tocado = gatos.find(g => Math.hypot(g.x - x, g.y - y) < g.size * 1.1);
+  if (tocado) {
+    tocado.giro = Math.PI * 2;
+    tocado.vy -= 3;
+    textos.push({ x: tocado.x, y: tocado.y - 40, vida: 1, texto: `¡Miau! (${tocado.nombre})` });
+  } else {
+    nuevoArcoiris(x, y);
+  }
+  document.getElementById('pista').style.opacity = 0;
+});
+document.getElementById('btnGato').addEventListener('click', nuevoGato);
+document.getElementById('btnLluvia').addEventListener('click', () => {
+  for (let i = 0; i < 8; i++) setTimeout(() => nuevoArcoiris(), i * 90);
+});
+
+// ---------- Bucle ----------
+let ultimo = performance.now(), reloj = 0;
+function frame(ahora) {
+  const dt = Math.min(0.05, (ahora - ultimo) / 1000);
+  ultimo = ahora;
+  ctx.clearRect(0, 0, W, H);
+  dibujarNubes(dt);
+
+  reloj += dt;
+  if (reloj > 1.8) {
+    reloj = 0;
+    if (arcoiris.length < gatos.length + 1) nuevoArcoiris();
+  }
+
+  for (const a of arcoiris) { a.update(dt); a.draw(); }
+  for (const g of gatos) g.update(dt);
+  for (const g of gatos) g.dibujarEstela();
+  for (const g of gatos) g.draw();
+
+  for (let i = particulas.length - 1; i >= 0; i--) {
+    const p = particulas[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.vida -= dt * 1.4;
+    if (p.vida <= 0) { particulas.splice(i, 1); continue; }
+    ctx.globalAlpha = p.vida;
+    ctx.fillStyle = p.color;
+    estrella(p.x, p.y, p.r * 1.6);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = 'center';
+  ctx.font = '700 20px Fredoka, system-ui, sans-serif';
+  for (let i = textos.length - 1; i >= 0; i--) {
+    const t = textos[i];
+    t.y -= dt * 30; t.vida -= dt * 0.8;
+    if (t.vida <= 0) { textos.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, t.vida * 2);
+    ctx.lineWidth = 5; ctx.strokeStyle = '#fff';
+    ctx.strokeText(t.texto, t.x, t.y);
+    ctx.fillStyle = '#a03cff';
+    ctx.fillText(t.texto, t.x, t.y);
+  }
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
